@@ -48,3 +48,7 @@ AGENTS.md
 docs/maintainer-guide.md
 docs/drafts/
 forks.md
+
+.codegraph/
+HANDOFF.md
+SHELLOUT-VERDICT.md

@@ -20,6 +20,7 @@ import { OneCLI } from '@onecli-sh/sdk';
 import { ONECLI_API_KEY, ONECLI_URL } from '../config.js';
 import type { MountSpec } from '../drivers/types.js';
 import { log } from '../log.js';
+import { toOneCliIdentifier } from '../onecli-identifier.js';
 
 import { registerGatewayProvider, type GatewayContribution } from './gateway-provider-registry.js';
 
@@ -60,11 +61,13 @@ export function contributionFromArgs(args: readonly string[], groupScope: string
 registerGatewayProvider('onecli', () => ({
   kind: 'onecli',
   async contribute({ key, groupName }) {
-    // OneCLI agent identifier is always the agent group id — stable across
-    // sessions and reversible via getAgentGroup() for approval routing.
-    await onecli.ensureAgent({ name: groupName, identifier: key.agentGroupId });
+    // OneCLI agent identifier is the agent group id, coerced to satisfy the
+    // OneCLI API's "must start with a letter" rule. Reversed in
+    // onecli-approvals.ts via fromOneCliIdentifier() for approval routing.
+    const agentIdentifier = toOneCliIdentifier(key.agentGroupId);
+    await onecli.ensureAgent({ name: groupName, identifier: agentIdentifier });
     const args: string[] = [];
-    const applied = await onecli.applyContainerConfig(args, { addHostMapping: false, agent: key.agentGroupId });
+    const applied = await onecli.applyContainerConfig(args, { addHostMapping: false, agent: agentIdentifier });
     if (!applied) {
       throw new Error('OneCLI gateway not applied — refusing to spawn container without credentials');
     }
