@@ -72,7 +72,13 @@ async function activate(): Promise<void> {
 }
 
 async function seedWiring(): Promise<void> {
-  await createAgentGroup({ id: 'ag-1', name: 'Test Agent', folder: 'test-agent', agent_provider: null, created_at: now() });
+  await createAgentGroup({
+    id: 'ag-1',
+    name: 'Test Agent',
+    folder: 'test-agent',
+    agent_provider: null,
+    created_at: now(),
+  });
   await createMessagingGroup({
     id: 'mg-1',
     channel_type: 'testchat',
