@@ -22,13 +22,41 @@
  * typed call, so the build/typecheck leg (`pnpm run build`) guards it against upstream
  * drift, not this test. Every Chat SDK channel follows this same shape.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { getRegisteredChannelNames } from './channel-registry.js';
+import { renameDiscordThread } from './discord.js';
 import './index.js'; // the real barrel — triggers every channel's self-registration
 
 describe('discord channel registration', () => {
   it('registers discord via the channel barrel', () => {
     expect(getRegisteredChannelNames()).toContain('discord');
+  });
+});
+
+describe('renameDiscordThread', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('skips a 3-part id (no thread segment) rather than renaming the parent channel', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renameDiscordThread('tok', 'discord:guild1:channel1', 'title');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('renames the trailing thread segment of a 4-part id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renameDiscordThread('tok', 'discord:guild1:channel1:thread1', 'title');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread1',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
   });
 });
