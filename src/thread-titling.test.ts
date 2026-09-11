@@ -218,10 +218,13 @@ describe('thread auto-titling', () => {
 
   it('titles a YouTube link from oEmbed instead of scraping the page', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ title: 'Deep-Dive with Prot: Emacs, Philosophy, Debian, Life & Open-Source Ethics' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({ title: 'Deep-Dive with Prot: Emacs, Philosophy, Debian, Life & Open-Source Ethics' }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
     );
     vi.stubGlobal('fetch', fetchMock);
 
