@@ -171,6 +171,46 @@ describe('thread auto-titling', () => {
     expect(setThreadTitle).toHaveBeenCalledTimes(1);
   });
 
+  it('titles a link-only message from the page <title> instead of the raw URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<html><head><title>Example Domain</title></head></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', 'https://example.com/some-article');
+
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/some-article', expect.any(Object));
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'Example Domain');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to the raw URL as the title when the page fetch fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('network down')),
+    );
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', 'https://example.com/some-article');
+
+    expect(setThreadTitle).toHaveBeenCalledWith(
+      'testchat:C1',
+      'testchat:C1:171',
+      'https://example.com/some-article',
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('is a no-op when the adapter has no setThreadTitle capability', async () => {
     registerChannelAdapter('testchat', {
       factory: () => {
