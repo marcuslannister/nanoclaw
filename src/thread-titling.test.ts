@@ -258,11 +258,7 @@ describe('thread auto-titling', () => {
     await activate();
     await seedWiring();
 
-    await inbound(
-      'm1',
-      'testchat:C1:171',
-      'https://github.com/AltanS/collie https://github.com/AltanS/collie',
-    );
+    await inbound('m1', 'testchat:C1:171', 'https://github.com/AltanS/collie https://github.com/AltanS/collie');
 
     expect(fetchMock).toHaveBeenCalledWith('https://github.com/AltanS/collie', expect.any(Object));
     expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'collie');
