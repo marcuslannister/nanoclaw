@@ -246,6 +246,49 @@ describe('thread auto-titling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('titles an accidental double-paste of the same URL from the page, not the raw duplicated text', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<html><head><title>collie</title></head></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound(
+      'm1',
+      'testchat:C1:171',
+      'https://github.com/AltanS/collie https://github.com/AltanS/collie',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith('https://github.com/AltanS/collie', expect.any(Object));
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'collie');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves genuinely different multi-link messages to the raw-text fallback', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', 'https://example.com/a https://example.com/b');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setThreadTitle).toHaveBeenCalledWith(
+      'testchat:C1',
+      'testchat:C1:171',
+      'https://example.com/a https://example.com/b',
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('falls back to the raw URL as the title when the page fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
 

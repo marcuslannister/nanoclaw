@@ -32,7 +32,12 @@ function extractTitle(rawContent: string): string | null {
   return truncate(stripped);
 }
 
-/** True when the message is nothing but a single URL (link-paste-to-summarize pattern). */
+/**
+ * True when the message is nothing but a URL — the link-paste-to-summarize
+ * pattern. Tolerates an accidental double-paste of the same URL (two
+ * whitespace-separated tokens, both identical); genuinely different URLs in
+ * one message are ambiguous, so those fall through to the raw-text title.
+ */
 function soleUrl(rawContent: string): string | null {
   let text: unknown;
   try {
@@ -41,8 +46,13 @@ function soleUrl(rawContent: string): string | null {
     return null;
   }
   if (typeof text !== 'string') return null;
-  const stripped = text.replace(/<@!?\d+>/g, '').trim();
-  return /^https?:\/\/\S+$/.test(stripped) ? stripped : null;
+  const tokens = text
+    .replace(/<@!?\d+>/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0 || !tokens.every((t) => /^https?:\/\/\S+$/.test(t))) return null;
+  return new Set(tokens).size === 1 ? tokens[0] : null;
 }
 
 /** youtube.com/youtu.be watch and short links — null for anything else. */
