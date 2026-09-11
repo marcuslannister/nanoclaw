@@ -192,21 +192,14 @@ describe('thread auto-titling', () => {
   });
 
   it('falls back to the raw URL as the title when the page fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockRejectedValue(new Error('network down')),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
 
     await activate();
     await seedWiring();
 
     await inbound('m1', 'testchat:C1:171', 'https://example.com/some-article');
 
-    expect(setThreadTitle).toHaveBeenCalledWith(
-      'testchat:C1',
-      'testchat:C1:171',
-      'https://example.com/some-article',
-    );
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'https://example.com/some-article');
 
     vi.unstubAllGlobals();
   });
