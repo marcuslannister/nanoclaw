@@ -192,12 +192,14 @@ describe('thread auto-titling', () => {
   });
 
   it('strips a trailing " — Show — Site" suffix and decodes named entities', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        '<html><head><title>105 她在危地马拉🇬🇹、厄瓜多尔🇪🇨、尼加拉瓜🇳🇮的158天 &mdash; Coffeeplus播客 &mdash; Overcast</title></head></html>',
-        { status: 200, headers: { 'content-type': 'text/html' } },
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          '<html><head><title>105 她在危地马拉🇬🇹、厄瓜多尔🇪🇨、尼加拉瓜🇳🇮的158天 &mdash; Coffeeplus播客 &mdash; Overcast</title></head></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     await activate();
