@@ -216,6 +216,33 @@ describe('thread auto-titling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('titles a YouTube link from oEmbed instead of scraping the page', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ title: 'Deep-Dive with Prot: Emacs, Philosophy, Debian, Life & Open-Source Ethics' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', 'https://www.youtube.com/watch?v=b4nV0jCHwGQ');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('https://www.youtube.com/oembed?url='),
+      expect.any(Object),
+    );
+    expect(setThreadTitle).toHaveBeenCalledWith(
+      'testchat:C1',
+      'testchat:C1:171',
+      'Deep-Dive with Prot: Emacs, Philosophy, Debian, Life & Open-Source Ethics',
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('falls back to the raw URL as the title when the page fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
 

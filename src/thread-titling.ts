@@ -45,7 +45,46 @@ function soleUrl(rawContent: string): string | null {
   return /^https?:\/\/\S+$/.test(stripped) ? stripped : null;
 }
 
+/** youtube.com/youtu.be watch and short links — null for anything else. */
+function youtubeOembedUrl(url: string): string | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+  if (host !== 'youtube.com' && host !== 'youtu.be' && host !== 'm.youtube.com') return null;
+  return `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+}
+
+/**
+ * YouTube's own <title> sits ~700KB into the page (heavy inline scripts
+ * before <head>'s metadata), past any byte cap worth paying for on every
+ * link. oEmbed is the platform's own lightweight metadata endpoint — a few
+ * hundred bytes, entities already decoded.
+ */
+async function fetchYoutubeTitle(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LINK_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { title?: unknown };
+    return typeof data.title === 'string' ? data.title.trim() || null : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchPageTitle(url: string): Promise<string | null> {
+  const oembedUrl = youtubeOembedUrl(url);
+  if (oembedUrl) {
+    const title = await fetchYoutubeTitle(oembedUrl);
+    if (title) return title;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LINK_FETCH_TIMEOUT_MS);
   try {
