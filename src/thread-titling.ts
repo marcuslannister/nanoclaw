@@ -66,6 +66,14 @@ async function fetchPageTitle(url: string): Promise<string | null> {
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+      .replace(/&mdash;/g, '—')
+      .replace(/&ndash;/g, '–')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+      // Many sites append " — Site Name" (and podcast pages often add a show
+      // name too, e.g. "Episode — Show — Overcast") — keep just the episode.
+      .split(' — ')[0]
       .replace(/\s+/g, ' ')
       .trim();
     return decoded || null;
