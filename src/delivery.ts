@@ -31,10 +31,28 @@ import type { OutboundMessage } from './mailbox/index.js';
 
 const ACTIVE_POLL_MS = 1000;
 const SWEEP_POLL_MS = 60_000;
-const MAX_DELIVERY_ATTEMPTS = 3;
+const MAX_DELIVERY_ATTEMPTS = 7;
+// Unspaced retries ran at poll speed (1s), so a seconds-long blip burned every
+// attempt and discarded the reply. Exponential from here: 5s…160s, ~5 minutes
+// of grace. Raising MAX_DELIVERY_ATTEMPTS doubles the last wait each time.
+// Same name, base, and idiom as host-sweep.ts's stale-message backoff — one
+// concept, greppable across both. The schedule is restated in delivery.test.ts.
+const BACKOFF_BASE_MS = 5_000;
 
-/** Track delivery attempt counts. Resets on process restart (gives failed messages a fresh chance). */
-const deliveryAttempts = new Map<string, number>();
+/**
+ * Track delivery attempts and when each message may next be tried. Resets on
+ * process restart (gives failed messages a fresh chance).
+ */
+const deliveryAttempts = new Map<string, { attempts: number; nextAttemptAt: number }>();
+
+/**
+ * The conversation a message belongs to — the address its reply lands at. Two
+ * messages sharing one share an ordering guarantee; messages on different ones
+ * are independent, so a stalled destination must not hold them up.
+ */
+function destinationStream(msg: { channelType: string | null; platformId: string | null; threadId: string | null }) {
+  return JSON.stringify([msg.channelType, msg.platformId, msg.threadId]);
+}
 
 /**
  * Sessions whose outbound queue is currently being drained.
@@ -215,7 +233,25 @@ async function drainSession(session: Session): Promise<void> {
     }
   }
 
+  // Destination streams held for this drain, by a message owed a retry.
+  const heldStreams = new Set<string>();
+
   for (const msg of pending) {
+    // A message owed a retry holds the rest of ITS destination's stream:
+    // that stream is a conversation, and delivering msg N+1 while N is still
+    // being retried would reorder the agent's own reply. Other destinations
+    // keep draining — one agent turn can address several (the originating
+    // chat, another agent, a task log), and an outage on one must not mute
+    // the others for the whole retry window.
+    const stream = destinationStream(msg);
+    if (heldStreams.has(stream)) continue;
+
+    const backoff = deliveryAttempts.get(msg.id);
+    if (backoff && backoff.nextAttemptAt > Date.now()) {
+      heldStreams.add(stream);
+      continue;
+    }
+
     try {
       const platformMsgId = await deliverMessage(msg, session);
       await withExistingMailboxSession(agentGroup.id, session.id, (mailbox) =>
@@ -248,8 +284,9 @@ async function drainSession(session: Session): Promise<void> {
         }
       }
     } catch (err) {
-      const attempts = (deliveryAttempts.get(msg.id) ?? 0) + 1;
-      deliveryAttempts.set(msg.id, attempts);
+      const attempts = (deliveryAttempts.get(msg.id)?.attempts ?? 0) + 1;
+      const backoffMs = BACKOFF_BASE_MS * Math.pow(2, attempts - 1);
+      deliveryAttempts.set(msg.id, { attempts, nextAttemptAt: Date.now() + backoffMs });
       if (attempts >= MAX_DELIVERY_ATTEMPTS) {
         log.error('Message delivery failed permanently, giving up', {
           messageId: msg.id,
@@ -273,8 +310,12 @@ async function drainSession(session: Session): Promise<void> {
           sessionId: session.id,
           attempt: attempts,
           maxAttempts: MAX_DELIVERY_ATTEMPTS,
+          backoffMs,
           err,
         });
+        // Same ordering rule as the hold check above — nothing behind this
+        // message on ITS destination goes out while it is owed a retry.
+        heldStreams.add(destinationStream(msg));
       }
     }
   }
