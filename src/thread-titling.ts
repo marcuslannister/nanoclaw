@@ -133,7 +133,10 @@ async function fetchPageTitle(url: string): Promise<string | null> {
       // Some sites (e.g. WeChat's mp.weixin.qq.com) serve an anti-bot decoy
       // page — no title, no og:title — to requests that don't look like a
       // browser.
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' },
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      },
     });
     if (!res.ok || !res.body) return null;
     if (!(res.headers.get('content-type') ?? '').includes('html')) return null;

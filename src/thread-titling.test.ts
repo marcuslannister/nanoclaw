@@ -267,12 +267,14 @@ describe('thread auto-titling', () => {
   });
 
   it('falls back to og:title when <title> is empty (JS-rendered SPA pages)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        '<html><head><title></title><meta property="og:title" content="Matt Pocock 的 AI 工程工作流"></head></html>',
-        { status: 200, headers: { 'content-type': 'text/html' } },
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          '<html><head><title></title><meta property="og:title" content="Matt Pocock 的 AI 工程工作流"></head></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     await activate();
