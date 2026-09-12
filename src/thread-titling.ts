@@ -88,6 +88,35 @@ async function fetchYoutubeTitle(url: string): Promise<string | null> {
   }
 }
 
+function cleanTitle(raw: string): string | null {
+  const decoded = raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    // Many sites append " — Site Name" (and podcast pages often add a show
+    // name too, e.g. "Episode — Show — Overcast") — keep just the episode.
+    .split(' — ')[0]
+    .replace(/\s+/g, ' ')
+    .trim();
+  return decoded || null;
+}
+
+/** og:title meta tag's content= value, tolerating either attribute order. */
+function extractOgTitle(html: string): string | null {
+  const tag =
+    html.match(/<meta\b[^>]*\bproperty=["']og:title["'][^>]*>/i) ??
+    html.match(/<meta\b[^>]*\bcontent=["'][^"']*["'][^>]*\bproperty=["']og:title["'][^>]*>/i);
+  const content = tag?.[0].match(/content=["']([^"']*)["']/i);
+  return content ? content[1] : null;
+}
+
 async function fetchPageTitle(url: string): Promise<string | null> {
   const oembedUrl = youtubeOembedUrl(url);
   if (oembedUrl) {
@@ -98,34 +127,33 @@ async function fetchPageTitle(url: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LINK_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'follow',
+      // Some sites (e.g. WeChat's mp.weixin.qq.com) serve an anti-bot decoy
+      // page — no title, no og:title — to requests that don't look like a
+      // browser.
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' },
+    });
     if (!res.ok || !res.body) return null;
     if (!(res.headers.get('content-type') ?? '').includes('html')) return null;
 
     let html = '';
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
       html += Buffer.from(chunk).toString('utf8');
-      if (html.length >= LINK_FETCH_MAX_BYTES || /<title[^>]*>[^<]*<\/title>/i.test(html)) break;
+      // A non-empty <title> or an og:title meta tag are both worth stopping
+      // for; an *empty* <title> (some SPAs set it via JS at runtime, leaving
+      // the static HTML's tag blank) is not — keep reading for og:title.
+      if (
+        html.length >= LINK_FETCH_MAX_BYTES ||
+        /<title[^>]*>[^<]+<\/title>/i.test(html) ||
+        /<meta\b[^>]*property=["']og:title["']/i.test(html)
+      ) {
+        break;
+      }
     }
-    const match = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-    if (!match) return null;
-    const decoded = match[1]
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&mdash;/g, '—')
-      .replace(/&ndash;/g, '–')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-      .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
-      // Many sites append " — Site Name" (and podcast pages often add a show
-      // name too, e.g. "Episode — Show — Overcast") — keep just the episode.
-      .split(' — ')[0]
-      .replace(/\s+/g, ' ')
-      .trim();
-    return decoded || null;
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    return cleanTitle(titleMatch?.[1] ?? extractOgTitle(html) ?? '');
   } catch {
     return null;
   } finally {

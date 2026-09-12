@@ -266,6 +266,29 @@ describe('thread auto-titling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('falls back to og:title when <title> is empty (JS-rendered SPA pages)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        '<html><head><title></title><meta property="og:title" content="Matt Pocock 的 AI 工程工作流"></head></html>',
+        { status: 200, headers: { 'content-type': 'text/html' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', 'https://mp.weixin.qq.com/s/abc123');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mp.weixin.qq.com/s/abc123',
+      expect.objectContaining({ headers: expect.objectContaining({ 'User-Agent': expect.any(String) }) }),
+    );
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'Matt Pocock 的 AI 工程工作流');
+
+    vi.unstubAllGlobals();
+  });
+
   it('leaves genuinely different multi-link messages to the raw-text fallback', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
