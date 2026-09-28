@@ -191,6 +191,25 @@ describe('thread auto-titling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('treats a role-mention + link as link-only (bot addressed via its managed role)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<html><head><title>Example Domain</title></head></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', '<@&456> https://example.com/some-article');
+
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'Example Domain');
+
+    vi.unstubAllGlobals();
+  });
+
   it('strips a trailing " — Show — Site" suffix and decodes named entities', async () => {
     const fetchMock = vi
       .fn()

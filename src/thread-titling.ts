@@ -25,7 +25,7 @@ function extractTitle(rawContent: string): string | null {
   }
   if (typeof text !== 'string') return null;
   const stripped = text
-    .replace(/<@!?\d+>/g, '') // platform mention markup (e.g. Discord)
+    .replace(/<@[!&]?\d+>/g, '') // platform user/role mention markup (e.g. Discord)
     .replace(/\s+/g, ' ')
     .trim();
   if (!stripped) return null;
@@ -47,7 +47,7 @@ function soleUrl(rawContent: string): string | null {
   }
   if (typeof text !== 'string') return null;
   const tokens = text
-    .replace(/<@!?\d+>/g, '')
+    .replace(/<@[!&]?\d+>/g, '')
     .trim()
     .split(/\s+/)
     .filter(Boolean);
