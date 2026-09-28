@@ -100,12 +100,23 @@ function unwrapForwards(adapter: ReturnType<typeof createDiscordAdapter>): void 
 
 registerChannelAdapter('discord', {
   factory: () => {
-    const env = readEnvFile(['DISCORD_BOT_TOKEN', 'DISCORD_PUBLIC_KEY', 'DISCORD_APPLICATION_ID']);
+    const env = readEnvFile([
+      'DISCORD_BOT_TOKEN',
+      'DISCORD_PUBLIC_KEY',
+      'DISCORD_APPLICATION_ID',
+      'DISCORD_MENTION_ROLE_IDS',
+    ]);
     if (!env.DISCORD_BOT_TOKEN) return null;
     const discordAdapter = createDiscordAdapter({
       botToken: env.DISCORD_BOT_TOKEN,
       publicKey: env.DISCORD_PUBLIC_KEY,
       applicationId: env.DISCORD_APPLICATION_ID,
+      // Channels where autocomplete offers only the bot's managed role (not
+      // the bot user) can only address it by role mention. The adapter reads
+      // this from process.env alone, which the service never sets from .env.
+      mentionRoleIds: env.DISCORD_MENTION_ROLE_IDS?.split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
     });
     unwrapForwards(discordAdapter);
     const bridge = createChatSdkBridge({

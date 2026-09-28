@@ -58,7 +58,14 @@ Reapply each by re-running its own `/add-<name>` apply against the clean upstrea
      renameDiscordThread(env.DISCORD_BOT_TOKEN!, threadId, title);
    return bridge;
    ```
-3. In `src/channels/discord-registration.test.ts`: import `vi, afterEach` from vitest and `renameDiscordThread` from `./discord.js`, then copy the `describe('renameDiscordThread', …)` block from the main tree (`git show ab438454:src/channels/discord-registration.test.ts`). It has two tests: a 3-part id makes no fetch, and a 4-part id PATCHes `https://discord.com/api/v10/channels/thread1`.
+3. Role mentions: in `#summary`, Discord autocomplete offers only the bot's managed role `@Puppet Master`, not the bot user. The adapter counts a role mention only when the role ID is in `mentionRoleIds`. It otherwise reads `process.env.DISCORD_MENTION_ROLE_IDS`, which the service never loads from `.env`. In the factory, add `'DISCORD_MENTION_ROLE_IDS'` to the `readEnvFile([...])` keys and pass this to `createDiscordAdapter({...})`:
+   ```typescript
+   mentionRoleIds: env.DISCORD_MENTION_ROLE_IDS?.split(',')
+     .map((id) => id.trim())
+     .filter(Boolean),
+   ```
+   `.env` holds `DISCORD_MENTION_ROLE_IDS=1476488874388750339` (data, not code, so the migration keeps it).
+4. In `src/channels/discord-registration.test.ts`: import `vi, afterEach` from vitest and `renameDiscordThread` from `./discord.js`, then copy the `describe('renameDiscordThread', …)` block from the main tree (`git show ab438454:src/channels/discord-registration.test.ts`). It has two tests: a 3-part id makes no fetch, and a 4-part id PATCHes `https://discord.com/api/v10/channels/thread1`.
 
 ## Customizations
 
