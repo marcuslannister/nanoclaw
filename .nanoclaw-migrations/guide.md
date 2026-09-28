@@ -1,9 +1,10 @@
 # NanoClaw Migration Guide
 
 Generated: 2026-09-27
-Base: 294ef2aee85218b23ad30eda9dfe10e590b54a8c
-HEAD at generation: ab438454b264ceaf3d6eefd31e7ea94655ac7d36
+Base: b200712e53e514515fd68a153e58ab287971aeab
+HEAD at generation: 2e44c9ddea964219e87a7e99b1ea73e3d4b1f233
 Upstream: b200712e53e514515fd68a153e58ab287971aeab
+Upgraded: 2026-09-27 (from fa0cdf4c; `researcher` recreated as ag-17a8be21-4c93-4b36-bc00-fd225eb7c3de)
 
 Tier: 2 (moderate — 3 skills, 5 custom pieces, 1 post-upgrade data step)
 
