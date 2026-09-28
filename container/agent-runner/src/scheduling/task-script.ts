@@ -12,6 +12,39 @@ export interface ScriptResult {
   data?: unknown;
 }
 
+export interface ScriptRuntime {
+  command: string;
+  extension: string;
+  args: (scriptPath: string) => string[];
+}
+
+export function selectScriptRuntime(script: string): ScriptRuntime {
+  const trimmed = script.trimStart();
+  const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? '';
+
+  if (firstLine.startsWith('#!') && (firstLine.includes('/node') || firstLine.includes('env node'))) {
+    return nodeRuntime;
+  }
+
+  if (/^(import|export)\s/.test(trimmed)) {
+    return nodeRuntime;
+  }
+
+  return bashRuntime;
+}
+
+const bashRuntime: ScriptRuntime = {
+  command: 'bash',
+  extension: 'sh',
+  args: (scriptPath) => [scriptPath],
+};
+
+const nodeRuntime: ScriptRuntime = {
+  command: 'node',
+  extension: 'mjs',
+  args: (scriptPath) => [scriptPath],
+};
+
 function log(msg: string): void {
   console.error(`[task-script] ${msg}`);
 }
@@ -21,13 +54,14 @@ export async function runScript(
   taskId: string,
   timeoutMs: number = SCRIPT_TIMEOUT_MS,
 ): Promise<ScriptResult | null> {
-  const scriptPath = path.join('/tmp', `task-script-${taskId}.sh`);
+  const runtime = selectScriptRuntime(script);
+  const scriptPath = path.join('/tmp', `task-script-${taskId}.${runtime.extension}`);
   fs.writeFileSync(scriptPath, script, { mode: 0o755 });
 
   return new Promise((resolve) => {
     execFile(
-      'bash',
-      [scriptPath],
+      runtime.command,
+      runtime.args(scriptPath),
       { timeout: timeoutMs, maxBuffer: SCRIPT_MAX_BUFFER, env: process.env },
       (error, stdout, stderr) => {
         try {

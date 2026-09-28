@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 
 import { initTestSessionDb, closeSessionDb, getInboundDb, getOutboundDb } from '../mailbox/sqlite/connection.js';
 import { getPendingMessages, markScriptSkipped } from '../db/messages-in.js';
-import { applyPreTaskScripts, runScript } from './task-script.js';
+import { applyPreTaskScripts, runScript, selectScriptRuntime } from './task-script.js';
 
 beforeEach(() => {
   initTestSessionDb();
@@ -113,5 +113,28 @@ describe('a timed-out script is reported as a timeout', () => {
     const joined = lines.join('\n');
     expect(joined).toContain('error: Command failed');
     expect(joined).not.toContain('timed out');
+  });
+});
+
+describe('selectScriptRuntime', () => {
+  it('keeps shell scripts on bash', () => {
+    const runtime = selectScriptRuntime('set -e\nprintf \'{"wakeAgent":false}\\n\'\n');
+
+    expect(runtime.command).toBe('bash');
+    expect(runtime.extension).toBe('sh');
+  });
+
+  it('runs ES module scripts with node', () => {
+    const runtime = selectScriptRuntime("import fs from 'fs';\nconsole.log(JSON.stringify({ wakeAgent: false }));\n");
+
+    expect(runtime.command).toBe('node');
+    expect(runtime.extension).toBe('mjs');
+  });
+
+  it('runs node shebang scripts with node', () => {
+    const runtime = selectScriptRuntime('#!/usr/bin/env node\nconsole.log(JSON.stringify({ wakeAgent: false }));\n');
+
+    expect(runtime.command).toBe('node');
+    expect(runtime.extension).toBe('mjs');
   });
 });

@@ -97,8 +97,15 @@ describe('delivery attempt shadow rows', () => {
     expect(afterFailure?.attempts).toBe(1);
     expect(afterFailure?.session_id).toBe(session.id);
     expect(afterFailure?.last_error).toContain('channel offline');
+    expect(afterFailure?.next_attempt_at).not.toBeNull();
 
-    await deliverSessionMessages(session);
+    // The retry waits out the first backoff (5s).
+    vi.useFakeTimers({ now: Date.now() + 5_000 });
+    try {
+      await deliverSessionMessages(session);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(await getDeliveryAttempt('out-1')).toBeUndefined();
   });
 
@@ -113,15 +120,25 @@ describe('delivery attempt shadow rows', () => {
       },
     });
 
-    // MAX_DELIVERY_ATTEMPTS is 3: two failures leave the row counting…
-    await deliverSessionMessages(session);
-    await deliverSessionMessages(session);
-    expect((await getDeliveryAttempt('out-poison'))?.attempts).toBe(2);
+    // MAX_DELIVERY_ATTEMPTS is 7: six failures (each waiting out its backoff)
+    // leave the row counting…
+    vi.useFakeTimers();
+    try {
+      await deliverSessionMessages(session);
+      for (const waitMs of [5_000, 10_000, 20_000, 40_000, 80_000]) {
+        vi.advanceTimersByTime(waitMs);
+        await deliverSessionMessages(session);
+      }
+      expect((await getDeliveryAttempt('out-poison'))?.attempts).toBe(6);
 
-    // …the third marks the message failed mailbox-side and clears the row —
-    // the attempt bookkeeping's job is done.
-    await deliverSessionMessages(session);
-    expect(await getDeliveryAttempt('out-poison')).toBeUndefined();
+      // …the seventh marks the message failed mailbox-side and clears the row —
+      // the attempt bookkeeping's job is done.
+      vi.advanceTimersByTime(160_000);
+      await deliverSessionMessages(session);
+      expect(await getDeliveryAttempt('out-poison')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('never writes a row for a first-time success', async () => {

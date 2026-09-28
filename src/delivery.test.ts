@@ -40,6 +40,7 @@ import { createChannelDeliveryAdapter } from './channels/channel-registry.js';
 import { createDestination } from './modules/agent-to-agent/db/agent-destinations.js';
 import { getAgentMailbox } from './mailbox/index.js';
 import { log } from './log.js';
+import type { Session } from './types.js';
 
 function openInboundDb(agentGroupId: string, sessionId: string): Database.Database {
   return new Database(inboundDbPath(agentGroupId, sessionId));
@@ -223,8 +224,25 @@ describe('deliverSessionMessages — malformed row containment', () => {
   });
 });
 
+/** Backoffs before attempts 2…7, matching delivery.ts's BACKOFF_BASE_MS schedule. */
+const RETRY_WAITS = [5_000, 10_000, 20_000, 40_000, 80_000, 160_000];
+
+/**
+ * Drive attempts 2…7, waiting out each backoff. Call after the first attempt
+ * has already failed, with fake timers installed.
+ */
+async function exhaustRemainingRetries(session: Session): Promise<void> {
+  for (const waitMs of RETRY_WAITS) {
+    vi.advanceTimersByTime(waitMs);
+    await deliverSessionMessages(session);
+  }
+}
+
 describe('deliverSessionMessages — retry and permanent failure', () => {
-  it('retries on adapter failure and marks failed after MAX_DELIVERY_ATTEMPTS (3)', async () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('spaces retries with backoff and marks failed after MAX_DELIVERY_ATTEMPTS (7)', async () => {
     await seedAgentAndChannel();
     const { session } = await resolveSession('ag-1', 'mg-1', null, 'shared');
     insertOutbound('ag-1', session.id, 'out-flaky');
@@ -237,25 +255,101 @@ describe('deliverSessionMessages — retry and permanent failure', () => {
       },
     });
 
-    // Attempt 1
+    // Attempt 1 fails and books a 5s backoff.
     await deliverSessionMessages(session);
     expect(callCount).toBe(1);
 
-    // Attempt 2
+    // Polls inside the backoff window must NOT consume an attempt — this is
+    // the regression: at poll speed (1s) a blip used to burn every attempt
+    // in seconds and discard the agent's reply.
     await deliverSessionMessages(session);
-    expect(callCount).toBe(2);
+    await deliverSessionMessages(session);
+    expect(callCount).toBe(1);
 
-    // Attempt 3 — should mark as permanently failed
-    await deliverSessionMessages(session);
-    expect(callCount).toBe(3);
+    await exhaustRemainingRetries(session);
+    expect(callCount).toBe(7);
 
-    // Attempt 4 — message is now in delivered (as failed), adapter not called
+    // Marked failed — further polls do not call the adapter again.
+    vi.advanceTimersByTime(160_000);
     await deliverSessionMessages(session);
-    expect(callCount).toBe(3);
+    expect(callCount).toBe(7);
 
     // Verify the message is in the delivered table with 'failed' status
     const delivered = await withMailboxSession('ag-1', session.id, (mailbox) => mailbox.getDeliveredIds());
     expect(delivered.has('out-flaky')).toBe(true);
+  });
+
+  it('holds the queue behind a message that is owed a retry, then drains in order', async () => {
+    // Head-of-line blocking is deliberate: the outbound queue is a
+    // conversation, so delivering msg 2 while msg 1 is still being retried
+    // would reorder the agent's own reply on the user's screen.
+    await seedAgentAndChannel();
+    const { session } = await resolveSession('ag-1', 'mg-1', null, 'shared');
+    insertOutbound('ag-1', session.id, 'out-first');
+    insertOutbound('ag-1', session.id, 'out-second');
+
+    let callCount = 0;
+    setDeliveryAdapter({
+      async deliver() {
+        callCount++;
+        if (callCount === 1) throw new Error('fetch failed');
+        return 'plat-ok';
+      },
+    });
+
+    // First message fails; the second must NOT be attempted in its place.
+    await deliverSessionMessages(session);
+    expect(callCount).toBe(1);
+    let delivered = await withMailboxSession('ag-1', session.id, (mailbox) => mailbox.getDeliveredIds());
+    expect(delivered.has('out-first')).toBe(false);
+    expect(delivered.has('out-second')).toBe(false);
+
+    // Polls inside the backoff window leave the whole queue alone.
+    await deliverSessionMessages(session);
+    expect(callCount).toBe(1);
+
+    // Backoff elapsed: the held message goes first, then the one behind it.
+    vi.advanceTimersByTime(5_000);
+    await deliverSessionMessages(session);
+    expect(callCount).toBe(3);
+    delivered = await withMailboxSession('ag-1', session.id, (mailbox) => mailbox.getDeliveredIds());
+    expect(delivered.has('out-first')).toBe(true);
+    expect(delivered.has('out-second')).toBe(true);
+  });
+
+  it('a stalled destination does not hold up a different destination', async () => {
+    // One agent turn can address several destinations (the originating chat,
+    // another agent, a task log). An outage on one must not mute the others
+    // for the whole retry window — the hold is per destination stream.
+    await seedAgentAndChannel();
+    const { session } = await resolveSession('ag-1', 'mg-1', null, 'shared');
+    insertOutbound('ag-1', session.id, 'out-stalled');
+
+    // Same authorized chat, different thread — a separate destination stream.
+    const otherDb = new Database(outboundDbPath('ag-1', session.id));
+    otherDb
+      .prepare(
+        `INSERT INTO messages_out (id, timestamp, kind, platform_id, channel_type, thread_id, content)
+         VALUES (?, datetime('now'), 'chat', 'telegram:123', 'telegram', 'telegram:123:thread-b', ?)`,
+      )
+      .run('out-other-dest', JSON.stringify({ text: 'unrelated' }));
+    otherDb.close();
+
+    const attempted: (string | null)[] = [];
+    setDeliveryAdapter({
+      async deliver(_ct, _platformId, threadId) {
+        attempted.push(threadId);
+        if (threadId === null) throw new Error('fetch failed');
+        return 'plat-ok';
+      },
+    });
+
+    // The threadless stream fails; thread-b must still go out on the same pass.
+    await deliverSessionMessages(session);
+    expect(attempted).toEqual([null, 'telegram:123:thread-b']);
+    const delivered = await withMailboxSession('ag-1', session.id, (mailbox) => mailbox.getDeliveredIds());
+    expect(delivered.has('out-stalled')).toBe(false);
+    expect(delivered.has('out-other-dest')).toBe(true);
   });
 
   it('does not acknowledge a message when no channel adapter is registered (#2995)', async () => {
@@ -277,9 +371,7 @@ describe('deliverSessionMessages — retry and permanent failure', () => {
       await withMailboxSession('ag-1', session.id, (mailbox) => mailbox.getDeliveredIds().has('out-offline')),
     ).toBe(false);
 
-    // Attempts 2 and 3 — exhausts MAX_DELIVERY_ATTEMPTS
-    await deliverSessionMessages(session);
-    await deliverSessionMessages(session);
+    await exhaustRemainingRetries(session);
 
     // The row must end as status='failed', never 'delivered'
     const deliveryDb = new Database(inboundDbPath('ag-1', session.id), { readonly: true });
@@ -306,15 +398,12 @@ describe('deliverSessionMessages — retry and permanent failure', () => {
       },
     });
 
-    // Attempt 1 — fails
+    // Attempt 1 — fails, books a 5s backoff
     await deliverSessionMessages(session);
     expect(callCount).toBe(1);
 
-    // Attempt 2 — succeeds
-    await deliverSessionMessages(session);
-    expect(callCount).toBe(2);
-
-    // Attempt 3 — not called, message already delivered
+    // Attempt 2 — succeeds once the backoff has elapsed
+    vi.advanceTimersByTime(5_000);
     await deliverSessionMessages(session);
     expect(callCount).toBe(2);
   });
@@ -426,10 +515,14 @@ describe('deliverSessionMessages — permission check', () => {
       },
     });
 
-    // Deliver 3 times to exhaust retries
-    await deliverSessionMessages(session);
-    await deliverSessionMessages(session);
-    await deliverSessionMessages(session);
+    // Exhaust the retries, waiting out each backoff
+    vi.useFakeTimers();
+    try {
+      await deliverSessionMessages(session);
+      await exhaustRemainingRetries(session);
+    } finally {
+      vi.useRealTimers();
+    }
 
     // Adapter never called — permission check throws before reaching it
     expect(calls).toHaveLength(0);

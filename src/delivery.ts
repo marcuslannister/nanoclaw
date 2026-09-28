@@ -25,7 +25,7 @@ import {
   getMessagingGroupByPlatform,
   getMessagingGroupForOwnDestination,
 } from './db/messaging-groups.js';
-import { clearDeliveryAttempt, recordDeliveryAttempt } from './db/coordination.js';
+import { clearDeliveryAttempt, getDeliveryAttempt, recordDeliveryAttempt } from './db/coordination.js';
 import { runGuarded, type DeliveryGuardSpec, type GuardedDeliveryHandler } from './delivery-guard.js';
 import { isUnguarded, type Unguarded } from './guard/index.js';
 import { mapConcurrent } from './concurrency.js';
@@ -40,7 +40,13 @@ import type { OutboundMessage } from './mailbox/index.js';
 
 const ACTIVE_POLL_MS = 1000;
 const SWEEP_POLL_MS = 60_000;
-const MAX_DELIVERY_ATTEMPTS = 3;
+const MAX_DELIVERY_ATTEMPTS = 7;
+// Unspaced retries ran at poll speed (1s), so a seconds-long blip burned every
+// attempt and discarded the reply. Exponential from here: 5s…160s, ~5 minutes
+// of grace. Raising MAX_DELIVERY_ATTEMPTS doubles the last wait each time.
+// Same name, base, and idiom as host-sweep.ts's stale-message backoff — one
+// concept, greppable across both. The schedule is restated in delivery.test.ts.
+const BACKOFF_BASE_MS = 5_000;
 /**
  * Sessions drained in parallel per poll tick. A visit is one mailbox round
  * trip (read the queue) plus the channel sends; serially, a tick scaled as
@@ -61,14 +67,19 @@ const DELIVERY_CONCURRENCY = 8;
  * give-up decision for this tick (the message just retries next poll), and a
  * failed clear leaves a stale row the next lifecycle of the same id clears.
  */
-async function recordAttemptRow(messageId: string, sessionId: string, err: unknown): Promise<number | null> {
+async function recordAttemptRow(
+  messageId: string,
+  sessionId: string,
+  err: unknown,
+  nextAttemptAt: string | null,
+): Promise<number | null> {
   /* eslint-disable no-catch-all/no-catch-all -- attempt bookkeeping must never break delivery */
   try {
     return await recordDeliveryAttempt({
       messageId,
       sessionId,
       now: new Date().toISOString(),
-      nextAttemptAt: null,
+      nextAttemptAt,
       error: err instanceof Error ? err.message : String(err),
     });
   } catch (recordErr) {
@@ -106,6 +117,27 @@ async function clearAttemptRow(messageId: string): Promise<void> {
  * second caller skips will be picked up on the next poll tick (~1s).
  */
 const inflightDeliveries = new Set<string>();
+
+/**
+ * The conversation a message belongs to — the address its reply lands at. Two
+ * messages sharing one share an ordering guarantee; messages on different ones
+ * are independent, so a stalled destination must not hold them up.
+ */
+function destinationStream(msg: { channelType: string | null; platformId: string | null; threadId: string | null }) {
+  return JSON.stringify([msg.channelType, msg.platformId, msg.threadId]);
+}
+
+/** The message's attempt row; a failed read means "no backoff known", never a broken delivery. */
+async function readAttemptRow(messageId: string) {
+  /* eslint-disable no-catch-all/no-catch-all -- attempt bookkeeping must never break delivery */
+  try {
+    return await getDeliveryAttempt(messageId);
+  } catch (err) {
+    log.warn('Failed to read delivery attempt row', { messageId, err });
+    return undefined;
+  }
+  /* eslint-enable no-catch-all/no-catch-all */
+}
 
 export interface ChannelDeliveryAdapter {
   deliver(
@@ -294,7 +326,25 @@ async function drainSession(session: Session): Promise<void> {
     }
   }
 
+  // Destination streams held for this drain, by a message owed a retry.
+  const heldStreams = new Set<string>();
+
   for (const msg of pending) {
+    // A message owed a retry holds the rest of ITS destination's stream:
+    // that stream is a conversation, and delivering msg N+1 while N is still
+    // being retried would reorder the agent's own reply. Other destinations
+    // keep draining — one agent turn can address several (the originating
+    // chat, another agent, a task log), and an outage on one must not mute
+    // the others for the whole retry window.
+    const stream = destinationStream(msg);
+    if (heldStreams.has(stream)) continue;
+
+    const prior = await readAttemptRow(msg.id);
+    if (prior?.next_attempt_at && Date.parse(prior.next_attempt_at) > Date.now()) {
+      heldStreams.add(stream);
+      continue;
+    }
+
     try {
       const platformMsgId = await deliverMessage(msg, session);
       await withExistingMailboxSession(agentGroup.id, session.id, (mailbox) =>
@@ -330,7 +380,9 @@ async function drainSession(session: Session): Promise<void> {
         }
       }
     } catch (err) {
-      const attempts = await recordAttemptRow(msg.id, session.id, err);
+      const backoffMs = BACKOFF_BASE_MS * Math.pow(2, prior?.attempts ?? 0);
+      const nextAttemptAt = new Date(Date.now() + backoffMs).toISOString();
+      const attempts = await recordAttemptRow(msg.id, session.id, err, nextAttemptAt);
       if (attempts !== null && attempts >= MAX_DELIVERY_ATTEMPTS) {
         log.error('Message delivery failed permanently, giving up', {
           messageId: msg.id,
@@ -355,8 +407,12 @@ async function drainSession(session: Session): Promise<void> {
           // null: the bookkeeping write itself failed; count unknown this tick.
           attempt: attempts,
           maxAttempts: MAX_DELIVERY_ATTEMPTS,
+          backoffMs,
           err,
         });
+        // Same ordering rule as the hold check above — nothing behind this
+        // message on ITS destination goes out while it is owed a retry.
+        heldStreams.add(stream);
       }
     }
   }

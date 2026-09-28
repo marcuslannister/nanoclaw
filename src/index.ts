@@ -55,6 +55,10 @@ import './channels/index.js';
 // mailbox composition slot. Imported for side effects.
 import './modules/index.js';
 
+// Registers a session-created hook that auto-titles new platform threads.
+// Imported for side effects.
+import './thread-titling.js';
+
 // CLI command barrel — populates the `ncl` registry before the CLI server
 // accepts connections.
 import './cli/commands/index.js';
@@ -200,6 +204,10 @@ async function main(): Promise<void> {
 
   // 9. Start the `ncl` CLI socket server (data/ncl.sock).
   await startCliServer();
+
+  // Dashboard (optional; no-ops without DASHBOARD_SECRET)
+  const { startDashboard } = await import('./dashboard-pusher.js');
+  await startDashboard();
 
   log.info('NanoClaw running');
 }

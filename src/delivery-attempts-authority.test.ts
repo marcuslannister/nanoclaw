@@ -99,11 +99,11 @@ afterEach(async () => {
 });
 
 describe('delivery attempts survive a restart', () => {
-  it('two attempts from a previous life plus one live failure is permanent give-up', async () => {
+  it('six attempts from a previous life plus one live failure is permanent give-up', async () => {
     await seedAgentAndChannel();
     const { session } = await resolveSession('ag-1', 'mg-1', null, 'shared');
     insertOutbound('ag-1', session.id, 'out-poison');
-    await seedPriorAttempts('out-poison', session.id, 2);
+    await seedPriorAttempts('out-poison', session.id, 6);
 
     let callCount = 0;
     setDeliveryAdapter({
@@ -113,7 +113,7 @@ describe('delivery attempts survive a restart', () => {
       },
     });
 
-    // One live failure — attempt 3 of 3 overall. The old in-memory counter
+    // One live failure — attempt 7 of 7 overall. The old in-memory counter
     // would have called this attempt 1 and retried the poison message
     // through every future crash loop.
     await deliverSessionMessages(session);

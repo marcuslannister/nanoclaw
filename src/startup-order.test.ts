@@ -58,6 +58,8 @@ vi.mock('./router.js', () => ({ routeInbound: state.routeInbound }));
 vi.mock('./response-registry.js', () => ({ getResponseHandlers: () => [] }));
 vi.mock('./channels/index.js', () => ({}));
 vi.mock('./modules/index.js', () => ({}));
+vi.mock('./thread-titling.js', () => ({}));
+vi.mock('./dashboard-pusher.js', () => ({ startDashboard: vi.fn() }));
 vi.mock('./cli/commands/index.js', () => ({}));
 vi.mock('./cli/delivery-action.js', () => ({}));
 vi.mock('./cli/socket-server.js', () => ({ startCliServer: state.ready, stopCliServer: vi.fn() }));
