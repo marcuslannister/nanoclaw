@@ -210,6 +210,22 @@ describe('thread auto-titling', () => {
     vi.unstubAllGlobals();
   });
 
+  it('titles a direct file link (no HTML title) from its file name', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('%PDF-1.7', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await activate();
+    await seedWiring();
+
+    await inbound('m1', 'testchat:C1:171', '<@&456> https://example.com/docs/2026/Core-Decision_Redacted.pdf');
+
+    expect(setThreadTitle).toHaveBeenCalledWith('testchat:C1', 'testchat:C1:171', 'Core Decision Redacted');
+
+    vi.unstubAllGlobals();
+  });
+
   it('strips a trailing " — Show — Site" suffix and decodes named entities', async () => {
     const fetchMock = vi
       .fn()

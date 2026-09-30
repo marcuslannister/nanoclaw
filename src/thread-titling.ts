@@ -164,11 +164,28 @@ async function fetchPageTitle(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * A direct file link (PDF, audio, …) has no HTML title to read, so name the
+ * thread from the file: `Core-Decision.pdf` → `Core Decision`. Links without
+ * a file extension return null — a page slug is not a title.
+ */
+function fileNameTitle(url: string): string | null {
+  let name: string;
+  try {
+    name = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+  } catch {
+    return null;
+  }
+  const base = name.replace(/\.[a-z0-9]{1,5}$/i, '');
+  if (base === name) return null;
+  return base.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || null;
+}
+
 registerSessionCreatedHook(async (event) => {
   if (!event.threadId) return;
 
   const url = soleUrl(event.message.content);
-  const linkTitle = url ? await fetchPageTitle(url) : null;
+  const linkTitle = url ? ((await fetchPageTitle(url)) ?? fileNameTitle(url)) : null;
   const title = linkTitle ? truncate(linkTitle) : extractTitle(event.message.content);
   if (!title) return;
 
