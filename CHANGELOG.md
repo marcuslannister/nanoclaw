@@ -12,6 +12,7 @@ All notable changes to NanoClaw will be documented in this file.
 - **A link to a file titles its thread from the file name.** A PDF or other non-HTML link has no page `<title>`, so the thread was named after the raw URL. `src/thread-titling.ts` now falls back to the link's file name, with the extension dropped and dashes and underscores turned into spaces (`Core-Decision.pdf` → `Core Decision`). Links without a file extension keep the URL-as-title fallback.
 - **Added the `research` container skill.** Investigates a question against primary sources (docs, source code, specs) and writes findings to a Markdown file, citing each claim's source.
 - **`ncl approvals help` and `ncl dropped-messages help` now list every value the host writes.** The `status` values include `awaiting_reason` (the "Reject with reason…" hold) and the `reason` values include `unknown_sender_decline_notify`; the reason list is derived from the unknown-sender policy list, so a new policy shows up in the help automatically. List filters are not checked against these lists (they never were), so existing `--status` and `--reason` queries behave as before.
+- **The agent image ships `ripgrep`.** Agents can run `rg` inside their containers. Rebuild with `./container/build.sh`; groups with their own image tag also need a rebuild on top of the new base.
 
 ## [2.4.0] - 2026-09-23
 
