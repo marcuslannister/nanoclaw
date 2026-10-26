@@ -76,6 +76,25 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" && \
     install -m 0755 /root/.bun/bin/bun /usr/local/bin/bun && \
     rm -rf /root/.bun
 
+# ---- pulse-mcp ---------------------------------------------------------------
+# Stdio MCP adapter for a Pulse monitoring server. Only groups that configure it
+# run it. Hashes come from the release's checksums.txt, whose signature was
+# verified against the release key pinned in Pulse's install-mcp.sh. Keep the
+# version in step with the Pulse server.
+ARG PULSE_MCP_VERSION=6.5.0
+ARG PULSE_MCP_SHA256_ARM64=e042c7e835fb278d1d63fcbdbc2b69203bd9004a98e0e2590262883d1b73b678
+ARG PULSE_MCP_SHA256_AMD64=0966819f72bc3b0624b24c69b2f60ecc4d4e95210486aa1fb9e35a85fe45fd27
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+        arm64) sha="$PULSE_MCP_SHA256_ARM64" ;; \
+        amd64) sha="$PULSE_MCP_SHA256_AMD64" ;; \
+        *) echo "pulse-mcp: unsupported arch $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL -o /usr/local/bin/pulse-mcp \
+        "https://github.com/rcourtman/Pulse/releases/download/v${PULSE_MCP_VERSION}/pulse-mcp-linux-${TARGETARCH}" && \
+    echo "${sha}  /usr/local/bin/pulse-mcp" | sha256sum -c - && \
+    chmod 0755 /usr/local/bin/pulse-mcp
+
 # ---- agent-runner deps -------------------------------------------------------
 # Deps are cached independently of CLI versions. Source is NOT baked in —
 # it's provided by the shared RO mount at runtime.
