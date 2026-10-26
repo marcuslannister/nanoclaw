@@ -15,6 +15,7 @@ All notable changes to NanoClaw will be documented in this file.
 - **The agent image ships `ripgrep`.** Agents can run `rg` inside their containers. Rebuild with `./container/build.sh`; groups with their own image tag also need a rebuild on top of the new base.
 - **The owner gets a DM when agents cannot start.** If container wakes keep failing for 5 minutes (for example, Docker or the credential gateway is down), `src/wake-failure-alert.ts` DMs the owner once through the host's channel adapter, and again when a wake succeeds.
 - **Engineering skills know where this fork tracks work.** `docs/agents/` and a new `## Agent skills` section in `CLAUDE.md` tell skills such as `triage` and `to-tickets` to use GitHub Issues on the fork, the five default triage labels, and a root `GLOSSARY.md` with `docs/adr/`.
+- **The agent image ships `pulse-mcp` 6.5.0.** A group can add the Pulse monitoring MCP server with `ncl groups config add-mcp-server --command pulse-mcp --args '["--base-url","<pulse-url>"]' --env '{"PULSE_API_TOKEN":"<placeholder>"}'`. The credential gateway injects the real token as `X-API-Token`. The Linux binary is pinned by SHA-256 from Pulse's signed `checksums.txt`. Rebuild with `./container/build.sh`.
 
 ## [2.4.0] - 2026-09-23
 
