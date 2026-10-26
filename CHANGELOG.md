@@ -14,6 +14,7 @@ All notable changes to NanoClaw will be documented in this file.
 - **`ncl approvals help` and `ncl dropped-messages help` now list every value the host writes.** The `status` values include `awaiting_reason` (the "Reject with reason…" hold) and the `reason` values include `unknown_sender_decline_notify`; the reason list is derived from the unknown-sender policy list, so a new policy shows up in the help automatically. List filters are not checked against these lists (they never were), so existing `--status` and `--reason` queries behave as before.
 - **The agent image ships `ripgrep`.** Agents can run `rg` inside their containers. Rebuild with `./container/build.sh`; groups with their own image tag also need a rebuild on top of the new base.
 - **The owner gets a DM when agents cannot start.** If container wakes keep failing for 5 minutes (for example, Docker or the credential gateway is down), `src/wake-failure-alert.ts` DMs the owner once through the host's channel adapter, and again when a wake succeeds.
+- **Engineering skills know where this fork tracks work.** `docs/agents/` and a new `## Agent skills` section in `CLAUDE.md` tell skills such as `triage` and `to-tickets` to use GitHub Issues on the fork, the five default triage labels, and a root `GLOSSARY.md` with `docs/adr/`.
 
 ## [2.4.0] - 2026-09-23
 
