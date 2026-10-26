@@ -60,6 +60,7 @@ import { initGroupFilesystem } from './group-init.js';
 import { getAgentMailbox } from './mailbox/index.js';
 import { stopTypingRefresh } from './modules/typing/index.js';
 import { log } from './log.js';
+import { noteWakeFailure, noteWakeSuccess } from './wake-failure-alert.js';
 import { validateAdditionalMounts } from './modules/mount-security/index.js';
 // Provider contracts use a separate barrel so update-skills identity detection
 // remains tied to src/providers/index.ts.
@@ -337,9 +338,13 @@ export function wakeContainer(session: Session): Promise<boolean> {
     return existing;
   }
   const promise = spawnContainer(session)
-    .then(() => true)
+    .then(() => {
+      noteWakeSuccess();
+      return true;
+    })
     .catch((err) => {
       log.warn('wakeContainer failed — host-sweep will retry', { sessionId: session.id, err });
+      noteWakeFailure(err);
       return false;
     })
     .finally(() => {
