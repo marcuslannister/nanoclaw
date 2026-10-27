@@ -16,6 +16,7 @@ All notable changes to NanoClaw will be documented in this file.
 - **The owner gets a DM when agents cannot start.** If container wakes keep failing for 5 minutes (for example, Docker or the credential gateway is down), `src/wake-failure-alert.ts` DMs the owner once through the host's channel adapter, and again when a wake succeeds.
 - **Engineering skills know where this fork tracks work.** `docs/agents/` and a new `## Agent skills` section in `CLAUDE.md` tell skills such as `triage` and `to-tickets` to use GitHub Issues on the fork, the five default triage labels, and a root `GLOSSARY.md` with `docs/adr/`.
 - **The agent image ships `pulse-mcp` 6.5.0.** A group can add the Pulse monitoring MCP server with `ncl groups config add-mcp-server --command pulse-mcp --args '["--base-url","<pulse-url>"]' --env '{"PULSE_API_TOKEN":"<placeholder>"}'`. The credential gateway injects the real token as `X-API-Token`. The Linux binary is pinned by SHA-256 from Pulse's signed `checksums.txt`. Rebuild with `./container/build.sh`.
+- **Local install notes are tracked.** `docs/local-install-notes.md` holds the upgrade-tripwire step after a local commit and how to create a OneCLI agent before a new group's first message. `CLAUDE.local.md` now only says when to read it.
 
 ## [2.4.0] - 2026-09-23
 
