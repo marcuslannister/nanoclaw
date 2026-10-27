@@ -21,3 +21,13 @@ Before the first message, create the agent yourself. The host finds it by identi
 If the first message already came and the agent gets 401, do steps 1 and 3 for the agent that OneCLI created. Then run `ncl groups restart --id <group-id>`. The container reads its gateway config at spawn, so the grant alone is not sufficient.
 
 `onecli agents list` prints access tokens. Do not repeat them. `onecli run … curl` from the host is not a valid credential test.
+
+To prove that the gateway injects a token, send one request with no token and one with the placeholder token. Both must return 401, and the agent's request to the same endpoint must succeed. A service's "last used" display can update late, so do not use it as the test.
+
+## Pulse capability manifest
+
+`/api/agent/capabilities` returns about 66 KB of JSON and needs no token. To list each tool with its scope and mode in one call:
+
+```bash
+curl -s -m 10 http://<pulse-host>:7655/api/agent/capabilities | jq -r '.capabilities[] | "\(.name) \(.scope) \(.actionMode)"'
+```
