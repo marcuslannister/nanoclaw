@@ -145,6 +145,10 @@ Notes:
   (under ~200 lines): it's always in the agent's prompt, and some providers
   cap that doc (Codex ~32 KB), so an over-long persona gets truncated. Put
   bulk material in `skills/` or extra context files instead.
+- **Name the usable tools when a credential limits an MCP server.** If the
+  server's token has only some scopes, list in the persona the tools that
+  token allows. Without that list, the agent guesses its capabilities from tool
+  names and reports scope-blocked tools as available.
 - Skills are copied into the agent's own skills overlay, keyed to that group,
   never shared across groups.
 

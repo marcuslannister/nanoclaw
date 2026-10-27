@@ -86,7 +86,7 @@ For ad-hoc central queries from skills or scripts, use the in-tree wrapper rathe
 | `setup/gateways/` | Gateway catalog (`gateway.json` discovery), selection/detection, and the skill-driven install used by setup and `/update-nanoclaw` |
 | `container/agent-runner/src/` | Agent-runner: poll loop, formatter, provider abstraction, MCP tools, destinations |
 | `container/skills/` | Container skills mounted into every agent session (`agent-browser`, `frontend-engineer`, `self-customize`, `welcome`; the selected gateway's agent skill and opt-in skills like `vercel-cli`, `slack-formatting` and `whatsapp-formatting` install with the `/add-*` skill that adds their capability) |
-| `groups/<folder>/` | Per-agent-group filesystem (CLAUDE.md, skills) — agent-runner source is a shared read-only mount, not copied per group |
+| `groups/<folder>/` | Per-agent-group filesystem: `instructions.prepend.md` (persona), skills, memory. `CLAUDE.md` is composed at spawn, so edit the persona file. Agent-runner source is a shared read-only mount, not copied per group |
 | `scripts/init-first-agent.ts` | Bootstrap the first DM-wired agent (used by `/init-first-agent` skill) |
 | `scripts/skill-apply.ts` | Deterministic SKILL.md applier — executes `nc:` directive fences; declare/emit core, journaled + idempotent |
 | `scripts/skill-directives.ts` + `scripts/skill-policy.ts` | `nc:` grammar parser + lint; UI-free driver policy derived from document structure (gate confirm, URL offer) |
