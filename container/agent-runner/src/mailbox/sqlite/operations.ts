@@ -1,3 +1,5 @@
+import type { Database } from 'bun:sqlite';
+
 import { getInboundDb, getOutboundDb, openInboundDb } from './connection.js';
 import type { MessageInRow } from '../../db/messages-in.js';
 import type { MessageOutRow } from '../../db/messages-out.js';
@@ -19,17 +21,38 @@ export function sqliteTimestamp(value: string): string {
   return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : value;
 }
 
-function hasOnWakeColumn(db: ReturnType<typeof openInboundDb>): boolean {
+function hasOnWakeColumn(db: Database): boolean {
   if (hasOnWake !== null) return hasOnWake;
   const columns = db.prepare("PRAGMA table_info('messages_in')").all() as Array<{ name: string }>;
   hasOnWake = columns.some(({ name }) => name === 'on_wake');
   return hasOnWake;
 }
 
+// Host file locks do not reach the container through the Docker Desktop mount, so a read can
+// catch a host write that is half done. The error is transient, so read again; only a
+// failure that persists reaches shouldRestartAfter (issue #1).
+const TORN_READ =
+  /database disk image is malformed|SQLITE_CORRUPT|file is not a database|attempt to write a readonly database/;
+const TORN_READ_RETRIES = 5;
+
+export function readInbound<T>(read: (inbound: Database) => T): T {
+  for (let attempt = 0; ; attempt++) {
+    let inbound: Database | undefined;
+    try {
+      inbound = openInboundDb();
+      return read(inbound);
+    } catch (error) {
+      if (attempt >= TORN_READ_RETRIES || !TORN_READ.test(String(error))) throw error;
+    } finally {
+      inbound?.close();
+    }
+    Bun.sleepSync(20);
+  }
+}
+
 export function sqliteGetPendingMessages(isFirstPoll: boolean, limit: number): MessageInRow[] {
-  const inbound = openInboundDb();
   const outbound = getOutboundDb();
-  try {
+  return readInbound((inbound) => {
     const onWakeFilter = hasOnWakeColumn(inbound) ? 'AND (on_wake = 0 OR ?1 = 1)' : '';
     const pending = inbound
       .prepare(
@@ -51,9 +74,7 @@ export function sqliteGetPendingMessages(isFirstPoll: boolean, limit: number): M
     const remaining = limit - wake.length;
     const context = remaining > 0 ? unclaimed.filter(({ trigger }) => trigger === 0).slice(-remaining) : [];
     return [...wake, ...context].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-  } finally {
-    inbound.close();
-  }
+  });
 }
 
 function mark(ids: string[], status: string): void {
@@ -92,37 +113,28 @@ export function sqliteMarkScriptSkipped(skips: Array<{ id: string; reason: strin
 }
 
 export function sqliteGetMessageIn(id: string): MessageInRow | undefined {
-  const inbound = openInboundDb();
-  try {
+  return readInbound((inbound) => {
     return inbound.prepare('SELECT * FROM messages_in WHERE id = ?').get(id) as MessageInRow | undefined;
-  } finally {
-    inbound.close();
-  }
+  });
 }
 
 export function sqliteFindQuestionResponse(questionId: string): MessageInRow | undefined {
-  const inbound = openInboundDb();
-  try {
+  return readInbound((inbound) => {
     const response = inbound
       .prepare("SELECT * FROM messages_in WHERE status = 'pending' AND content LIKE ?")
       .get(`%"questionId":"${questionId}"%`) as MessageInRow | undefined;
     if (!response) return undefined;
     const acknowledged = getOutboundDb().prepare('SELECT 1 FROM processing_ack WHERE message_id = ?').get(response.id);
     return acknowledged ? undefined : response;
-  } finally {
-    inbound.close();
-  }
+  });
 }
 
 export function sqliteFindCliResponse(requestId: string): MessageInRow | undefined {
-  const inbound = openInboundDb();
-  try {
+  return readInbound((inbound) => {
     return inbound
       .prepare("SELECT * FROM messages_in WHERE status = 'pending' AND content LIKE ?")
       .get(`%"requestId":"${requestId}"%`) as MessageInRow | undefined;
-  } finally {
-    inbound.close();
-  }
+  });
 }
 
 export function sqliteWriteMessageOut(message: OutboundWrite): number {

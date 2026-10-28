@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { closeSessionDb, initTestSessionDb } from './connection.js';
 import { SqliteAgentMailbox } from './index.js';
+import { readInbound } from './operations.js';
 
 afterEach(() => closeSessionDb());
 
@@ -13,6 +14,35 @@ describe('SQLite runner mailbox canonical serialization', () => {
     expect(mailbox.shouldRestartAfter('file is not a database')).toBe(true);
     expect(mailbox.shouldRestartAfter('database is locked')).toBe(false);
     expect(mailbox.shouldRestartAfter('no such table: messages_in')).toBe(false);
+  });
+
+  test('retries a torn inbound read and rethrows one that persists', () => {
+    initTestSessionDb();
+    let calls = 0;
+    const flaky = () => {
+      if (++calls < 3) throw new Error('database disk image is malformed');
+      return 'rows';
+    };
+    expect(readInbound(flaky)).toBe('rows');
+    expect(calls).toBe(3);
+
+    calls = 0;
+    expect(() =>
+      readInbound(() => {
+        calls++;
+        throw new Error('attempt to write a readonly database');
+      }),
+    ).toThrow('readonly');
+    expect(calls).toBe(6);
+
+    calls = 0;
+    expect(() =>
+      readInbound(() => {
+        calls++;
+        throw new Error('no such table: messages_in');
+      }),
+    ).toThrow('no such table');
+    expect(calls).toBe(1);
   });
 
   test('round-trips full inbound and outbound lifecycle records', async () => {
