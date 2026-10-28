@@ -29,11 +29,15 @@ If no OneCLI agent exists, OneCLI creates the group's agent on the first message
 
 Before the first message, create the agent yourself. The host finds it by identifier at spawn, so no restart is necessary:
 
-1. Find the Anthropic secret ID: `onecli agents grants list --id <working-agent-id>`.
+1. Find the Anthropic secret ID: `onecli agents secrets --id <working-agent-id>`.
 2. Create the agent: `onecli agents create --name <name> --identifier <agent-group-id>`. Keep only the `id` field of the output.
-3. Attach the Anthropic secret and each service secret the group needs: `onecli agents grants attach-secret --id <new-agent-id> --secret-id <secret-id>`.
+3. Assign the Anthropic secret and each service secret the group needs: `onecli agents set-secrets --id <new-agent-id> --secret-ids <id1>,<id2>`. This replaces the agent's whole list, so include every secret it needs.
 
-If the first message already came and the agent gets 401, do steps 1 and 3 for the agent that OneCLI created. Then run `ncl groups restart --id <group-id>`. The container reads its gateway config at spawn, so the grant alone is not sufficient.
+On the 1.42.0 server, `onecli agents grants …` fails with "Unrecognized request URL", because the CLI is newer than the server. Use `agents secrets` and `agents set-secrets`. All agents are in `selective` mode, so an agent with no assigned secrets gets 401.
+
+If the first message already came and the agent gets 401, do steps 1 and 3 for the agent that OneCLI created. Then run `ncl groups restart --id <group-id>`. The container reads its gateway config at spawn, so the assignment alone is not sufficient.
+
+After a OneCLI version change, check that every agent still has its secrets (`onecli agents secrets --id <id>`). The 1.45.0 → 1.42.0 downgrade removed the assignments of the agents created or changed on 1.45.0.
 
 `onecli agents list` prints access tokens. Do not repeat them. `onecli run … curl` from the host is not a valid credential test.
 
