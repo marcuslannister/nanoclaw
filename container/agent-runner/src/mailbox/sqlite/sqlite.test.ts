@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { closeSessionDb, initTestSessionDb } from './connection.js';
+import { closeSessionDb, initTestSessionDb, readInbound } from './connection.js';
 import { SqliteAgentMailbox } from './index.js';
-import { readInbound } from './operations.js';
 
 afterEach(() => closeSessionDb());
 
