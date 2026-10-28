@@ -15,6 +15,14 @@ This install's names are slug-scoped, so the `com.nanoclaw` and `nanoclaw-agent:
 
 A change to `container/agent-runner/src/` needs no image rebuild: containers mount that source read-only and use it at the next spawn.
 
+## OneCLI gateway version
+
+The gateway runs exactly the pin in `.claude/skills/add-onecli/versions.json` (1.42.0). `~/.onecli/.env` holds `ONECLI_VERSION=1.42.0`. Keep that line: the compose file uses `latest` when it is missing, and `latest` moved this install to 1.45.0 once.
+
+1.45.0 drops OneCLI agent groups in migration `20260727035117_drop_agent_groups`, so 1.42.0 cannot start on a 1.45 database (`policy_rule_identities.agent_group_id does not exist`). `~/.onecli/backups/reverse-drop-agent-groups.sql` recreates the dropped objects with the 1.42.0 DDL. To downgrade: stop NanoClaw and the `onecli` container, take a `pg_dump`, apply that file with `docker compose exec -T postgres psql`, set the pin, and run `docker compose up -d`.
+
+Rollback to 1.45.0: set `ONECLI_VERSION=rollback` (a local tag of image `d0177458b1f9`) and run `docker compose up -d`. 1.45.0 applies its drop migration again. Dump from just before the downgrade: `~/onecli-db-backup-20261028-002451-pre-downgrade.sql`.
+
 ## New agent group (OneCLI)
 
 If no OneCLI agent exists, OneCLI creates the group's agent on the first message, with no credential grants. The agent then gets 401 from `api.anthropic.com`.
