@@ -22,6 +22,7 @@ All notable changes to NanoClaw will be documented in this file.
 - **Local install notes are tracked.** `docs/local-install-notes.md` holds the upgrade-tripwire step after a local commit and how to create a OneCLI agent before a new group's first message. `CLAUDE.local.md` now only says when to read it.
 - **The pre-commit hook formats only staged files.** It ran Prettier over all of `src/` on every commit, which printed hundreds of lines and rewrote unstaged files. It now skips commits with no staged `.ts` file and prints only warnings.
 - **Persona guidance for scoped MCP servers.** `docs/templates.md` now says to list in the persona the tools that a limited credential allows, so the agent does not report scope-blocked tools as available.
+- **The OneCLI new-group steps match the 1.42.0 server.** `docs/local-install-notes.md` now uses `onecli agents secrets` and `set-secrets`, because the 1.42.0 server has no `grants` API. It also says to check every agent's secrets after a OneCLI version change, because the 1.45.0 → 1.42.0 downgrade removed some assignments.
 
 ## [2026.10.0] - 2026-10-09
 
