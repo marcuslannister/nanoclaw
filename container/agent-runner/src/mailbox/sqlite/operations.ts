@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 
-import { getInboundDb, getOutboundDb, readInbound } from './connection.js';
+import { getInboundDb, getOutboundDb, openInboundDb } from './connection.js';
 import type { MessageInRow } from '../../db/messages-in.js';
 import type { MessageOutRow } from '../../db/messages-out.js';
 import {
@@ -26,6 +26,28 @@ function hasOnWakeColumn(db: Database): boolean {
   const columns = db.prepare("PRAGMA table_info('messages_in')").all() as Array<{ name: string }>;
   hasOnWake = columns.some(({ name }) => name === 'on_wake');
   return hasOnWake;
+}
+
+// Host file locks do not reach the container through the Docker Desktop mount, so a read can
+// catch a host write that is half done. The error is transient, so read again; only a
+// failure that persists reaches shouldRestartAfter (issue #1).
+const TORN_READ =
+  /database disk image is malformed|SQLITE_CORRUPT|file is not a database|attempt to write a readonly database/;
+const TORN_READ_RETRIES = 5;
+
+export function readInbound<T>(read: (inbound: Database) => T): T {
+  for (let attempt = 0; ; attempt++) {
+    let inbound: Database | undefined;
+    try {
+      inbound = openInboundDb();
+      return read(inbound);
+    } catch (error) {
+      if (attempt >= TORN_READ_RETRIES || !TORN_READ.test(String(error))) throw error;
+    } finally {
+      inbound?.close();
+    }
+    Bun.sleepSync(20);
+  }
 }
 
 export function sqliteGetPendingMessages(isFirstPoll: boolean, limit: number): MessageInRow[] {

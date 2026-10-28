@@ -16,10 +16,6 @@
  * and it would silently never see new host messages. See
  * src/session-manager.ts for the full set of cross-mount invariants and
  * scripts/sanity-live-poll.ts for the empirical validation.
- *
- * Host file locks do not cross the mount either, so a read can catch a host
- * write half done. Inbound readers go through readInbound(), which retries
- * torn reads; check with scripts/sanity-inbound-torn-read.ts.
  */
 import { Database } from 'bun:sqlite';
 
@@ -33,8 +29,9 @@ let _testMode = false;
 /**
  * Avoid all cached db reads; open inbound.db read-only with mmap and page cache disabled.
  *
- * Private: readers use readInbound(), which closes the connection and retries
- * torn reads.
+ * Use this (not getInboundDb) for readers that need to see host-written rows
+ * promptly — e.g. messages_in polling. Caller must .close() the returned
+ * connection (try/finally).
  *
  * Needed for mounts where host writes don't reliably invalidate
  * SQLite's caches: virtiofs (Colima, Lima, Podman Machine, Apple
@@ -42,7 +39,7 @@ let _testMode = false;
  *
  * Cost is microseconds per query, so safe for universal use.
  */
-function openInboundDb(): Database {
+export function openInboundDb(): Database {
   // In test mode return a thin wrapper over the in-memory singleton.
   // Callers do try/finally { db.close() } — the wrapper no-ops close()
   // so the singleton survives for the rest of the test.
@@ -60,32 +57,11 @@ function openInboundDb(): Database {
   return db;
 }
 
-// A torn read (see the header) is transient, so read again; only a failure that persists
-// reaches shouldRestartAfter (issue #1). Use this, not getInboundDb, to see new host rows.
-const TORN_READ =
-  /database disk image is malformed|SQLITE_CORRUPT|file is not a database|attempt to write a readonly database/;
-const TORN_READ_RETRIES = 5;
-
-export function readInbound<T>(read: (inbound: Database) => T): T {
-  for (let attempt = 0; ; attempt++) {
-    let inbound: Database | undefined;
-    try {
-      inbound = openInboundDb();
-      return read(inbound);
-    } catch (error) {
-      if (attempt >= TORN_READ_RETRIES || !TORN_READ.test(String(error))) throw error;
-    } finally {
-      inbound?.close();
-    }
-    Bun.sleepSync(20);
-  }
-}
-
 /**
  * Inbound DB — long-lived singleton, OK for tables the host writes once
  * at spawn and never again (destinations, session_routing). For
  * messages_in polling — where the host writes continuously and a stale
- * view causes the pollHandle hang — use `readInbound()` instead.
+ * view causes the pollHandle hang — use `openInboundDb()` instead.
  */
 export function getInboundDb(): Database {
   if (!_inbound) {
