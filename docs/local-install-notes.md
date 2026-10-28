@@ -8,6 +8,13 @@ A local commit moves HEAD past `data/upgrade-state.json`. The next restart then 
 
 After each local commit, do the build or image work that the commit needs. Then run `pnpm exec tsx scripts/upgrade-state.ts set` before the next restart. If all agents go silent, first look for `Upgrade tripwire` in `logs/nanoclaw.error.log`.
 
+This install's names are slug-scoped, so the `com.nanoclaw` and `nanoclaw-agent:latest` in `CLAUDE.md` do not exist here:
+
+- Restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw-v2-89818148`
+- Agent image: `nanoclaw-agent-v2-89818148:latest`
+
+A change to `container/agent-runner/src/` needs no image rebuild: containers mount that source read-only and use it at the next spawn.
+
 ## New agent group (OneCLI)
 
 If no OneCLI agent exists, OneCLI creates the group's agent on the first message, with no credential grants. The agent then gets 401 from `api.anthropic.com`.
